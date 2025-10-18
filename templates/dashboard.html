@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - TERASS{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h1>Welcome, {{ username }}!</h1>
+    <div class="dashboard-card">
+        <h2>User Dashboard</h2>
+        <p>You have successfully logged in to TERASS.</p>
+        <p>This is a simple user registration and authentication system.</p>
+        
+        <div class="dashboard-actions">
+            <a href="{{ url_for('logout') }}" class="btn btn-secondary">Logout</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
