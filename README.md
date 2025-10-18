@@ -97,6 +97,32 @@ TERASS-/
 - **HTML/CSS**: Frontend
 - **Jinja2**: Template engine
 
+## Production Deployment
+
+**Important Security Notes for Production:**
+
+1. **Secret Key**: Always set a secure SECRET_KEY environment variable:
+   ```bash
+   export SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
+   ```
+
+2. **Database**: Consider using PostgreSQL or MySQL instead of SQLite for production.
+
+3. **HTTPS**: Always use HTTPS in production to protect user credentials.
+
+4. **Additional Security**: Consider implementing:
+   - Rate limiting for login/registration attempts
+   - Email verification
+   - CAPTCHA for registration
+   - Two-factor authentication
+   - More robust email validation (e.g., using `email-validator` library)
+
+5. **Web Server**: Use a production WSGI server like Gunicorn:
+   ```bash
+   pip install gunicorn
+   gunicorn -w 4 -b 0.0.0.0:8000 app:app
+   ```
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

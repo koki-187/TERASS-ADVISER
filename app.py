@@ -43,7 +43,7 @@ def register():
         confirm_password = request.form.get('confirm_password')
         
         # Validation
-        if not username or not email or not password:
+        if not username or not email or not password or not confirm_password:
             flash('All fields are required!', 'error')
             return render_template('register.html')
         
