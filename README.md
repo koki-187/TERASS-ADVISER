@@ -42,6 +42,12 @@ pip install -r requirements.txt
 python app.py
 ```
 
+For production, set a secure secret key:
+```bash
+export SECRET_KEY='your-secure-random-secret-key'
+python app.py
+```
+
 2. Open your web browser and navigate to:
 ```
 http://127.0.0.1:5000

@@ -2,9 +2,11 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
+import re
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+# Use environment variable for secret key, fallback to a fixed key for development
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
 DATABASE = 'users.db'
 
@@ -43,6 +45,16 @@ def register():
         # Validation
         if not username or not email or not password:
             flash('All fields are required!', 'error')
+            return render_template('register.html')
+        
+        # Validate username format (alphanumeric and underscore, 3-20 characters)
+        if not re.match(r'^[a-zA-Z0-9_]{3,20}$', username):
+            flash('Username must be 3-20 characters and contain only letters, numbers, and underscores!', 'error')
+            return render_template('register.html')
+        
+        # Validate email format
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            flash('Please enter a valid email address!', 'error')
             return render_template('register.html')
         
         if password != confirm_password:
