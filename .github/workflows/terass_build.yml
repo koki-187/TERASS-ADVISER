@@ -1,0 +1,60 @@
+name: Build and inject secrets
+
+# Trigger this workflow manually or on pushes to the default branch.  Adjust
+# branches as appropriate for your project.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # These secrets must be defined in your GitHub repository settings under
+      # "Actions" → "Secrets and variables".  They authenticate the Bitwarden
+      # CLI and identify which project to export secrets from.
+      BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+      BWS_PROJECT_ID: ${{ secrets.BWS_PROJECT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Bitwarden CLI
+        run: |
+          curl -sL https://github.com/bitwarden/sdk/releases/latest/download/bws-linux-x64.zip -o bws.zip
+          unzip -qq bws.zip -d bws
+          sudo mv bws/bws /usr/local/bin/bws
+          bws --version
+
+      - name: Validate Bitwarden access token
+        run: |
+          # Check that the provided access token is valid
+          bws status
+
+      - name: Export secrets to environment files
+        run: |
+          # Export all secrets from the Bitwarden project in KEY=VALUE form
+          bws secret list --project-id "$BWS_PROJECT_ID" --output json \
+            | jq -r '.[] | "\(.key)=\(.value)"' > .env.production
+
+          # Prepare an xcconfig for iOS by converting KEY=VALUE into KEY = VALUE lines
+          mkdir -p ios
+          awk -F '=' '{print $1" = "$2}' .env.production > ios/Config.xcconfig
+
+      - name: Placeholder build step
+        run: |
+          echo "Add your build or test commands here."
+          # For example:
+          # npm install && npm test
+          # python -m pytest
+
+      - name: Upload generated environment files
+        uses: actions/upload-artifact@v4
+        with:
+          name: env-files
+          path: |
+            .env.production
+            ios/Config.xcconfig
