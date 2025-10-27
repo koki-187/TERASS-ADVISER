@@ -35,4 +35,3 @@ def determine_class(record: AgentRecord) -> dict:
     needed_sales = max(0, target[2] - record.period_sales)
     needed_cases = max(0, target[3] - record.cumulative_cases)
     return {'class': 'Unranked', 'needed_sales': needed_sales, 'needed_cases': needed_cases}
-"""
