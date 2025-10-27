@@ -40,8 +40,8 @@ Alternatively, you can run your application with the `--uuids-as-keynames` optio
 To run the application locally with secrets:
 
 ```bash
-# Replace <PROJECT_ID> with your Bitwarden project ID
-bws run --project-id <PROJECT_ID> -- python terass_assistant_with_scenarios.py
+#  Replace <PROJECT_ID> with your Bitwarden project ID
+bws run --project-id <PROJECT_ID> -- python terass_assistant.py
 ```
 
 The `bws run` command will export all the secrets in your project as environment variables. Your code should read the values using `os.environ.get("OPENAI_API_KEY")` or a similar function.
