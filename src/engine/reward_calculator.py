@@ -67,4 +67,3 @@ def calc_portfolio_reward(deals: List[Deal]) -> dict:
         'total_reward': round(total_reward, 2),
         'details': details
     }
-"""

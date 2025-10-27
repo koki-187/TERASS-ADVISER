@@ -29,4 +29,3 @@ if __name__ == '__main__':
         cmd_start()
     else:
         print("usage: python src/cli/main.py start")
-"""

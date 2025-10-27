@@ -1,0 +1,558 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TERASS Adviser API",
+    "description": "REST API for TERASS business operations including reward calculations, agent class determination, and feedback management. This API is designed to be integrated with ChatGPT for direct access to TERASS business logic.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "TERASS Support",
+      "email": "support@terass.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Development server"
+    },
+    {
+      "url": "https://api.terass.com",
+      "description": "Production server"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "API Information",
+        "description": "Get API version and available endpoints",
+        "operationId": "getApiInfo",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "endpoints": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Check if the API is running",
+        "operationId": "healthCheck",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "API is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "healthy"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reward/calculate": {
+      "post": {
+        "summary": "Calculate Reward",
+        "description": "Calculate commission rewards for one or more real estate deals. Supports self-discovered deals, HQ referrals, and TERASS Offer deals. Automatically applies bonus stage (90%) for agents who have reached 20,000,000 yen in annual sales.",
+        "operationId": "calculateReward",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RewardCalculationRequest"
+              },
+              "examples": {
+                "single_deal": {
+                  "summary": "Single self-discovered deal",
+                  "value": {
+                    "deals": [
+                      {
+                        "tax_excluded_fee": 5000000,
+                        "source": "self",
+                        "date": "2025-04-01"
+                      }
+                    ]
+                  }
+                },
+                "multiple_deals": {
+                  "summary": "Multiple deals with different sources",
+                  "value": {
+                    "deals": [
+                      {
+                        "tax_excluded_fee": 5000000,
+                        "source": "self",
+                        "date": "2025-04-01"
+                      },
+                      {
+                        "tax_excluded_fee": 2000000,
+                        "source": "hq",
+                        "date": "2025-05-01"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful calculation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RewardCalculationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/class": {
+      "post": {
+        "summary": "Determine Agent Class",
+        "description": "Determine the agent's class (Premier, Senior, Expert, Lead, etc.) based on their sales performance and completed cases. Different thresholds apply for capital region and local region agents.",
+        "operationId": "determineAgentClass",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentClassRequest"
+              },
+              "examples": {
+                "capital_region": {
+                  "summary": "Capital region agent",
+                  "value": {
+                    "region": "capital",
+                    "period_sales": 12000000,
+                    "cumulative_cases": 5
+                  }
+                },
+                "local_region": {
+                  "summary": "Local region agent",
+                  "value": {
+                    "region": "local",
+                    "period_sales": 4500000,
+                    "cumulative_cases": 3
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful classification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentClassResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/feedback": {
+      "post": {
+        "summary": "Submit Feedback",
+        "description": "Submit feedback, opinions, or feature requests. This endpoint allows ChatGPT and other users to directly post their thoughts and suggestions about the TERASS system.",
+        "operationId": "submitFeedback",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackSubmitRequest"
+              },
+              "examples": {
+                "feature_request": {
+                  "summary": "Feature request",
+                  "value": {
+                    "user_id": "agent123",
+                    "category": "feature_request",
+                    "message": "It would be great to have a mobile app for quick property lookups",
+                    "context": {
+                      "current_workflow": "desktop_only"
+                    }
+                  }
+                },
+                "bug_report": {
+                  "summary": "Bug report",
+                  "value": {
+                    "user_id": "agent456",
+                    "category": "bug",
+                    "message": "The reward calculation seems incorrect for bonus stage deals",
+                    "context": {
+                      "deal_amount": 5000000,
+                      "expected_reward": 4500000
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Feedback submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackSubmitResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "summary": "List Feedback",
+        "description": "Retrieve submitted feedback entries with optional filtering",
+        "operationId": "listFeedback",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by feedback status",
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "reviewed", "resolved"]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results to return",
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of feedback entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Token",
+        "description": "API token for authentication. Set via API_TOKEN environment variable on server."
+      }
+    },
+    "schemas": {
+      "Deal": {
+        "type": "object",
+        "required": ["tax_excluded_fee", "source"],
+        "properties": {
+          "tax_excluded_fee": {
+            "type": "number",
+            "description": "Tax-excluded commission fee in Japanese Yen",
+            "example": 5000000
+          },
+          "source": {
+            "type": "string",
+            "enum": ["self", "hq", "terass_offer"],
+            "description": "Deal source type: self (self-discovered), hq (HQ referral), terass_offer (TERASS Offer)",
+            "example": "self"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Deal date in YYYY-MM-DD format",
+            "example": "2025-04-01"
+          }
+        }
+      },
+      "RewardCalculationRequest": {
+        "type": "object",
+        "required": ["deals"],
+        "properties": {
+          "deals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Deal"
+            },
+            "minItems": 1
+          }
+        }
+      },
+      "RewardCalculationResponse": {
+        "type": "object",
+        "properties": {
+          "total_reward": {
+            "type": "number",
+            "description": "Total reward amount in Yen"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "deal": {
+                  "$ref": "#/components/schemas/Deal"
+                },
+                "reward_amount": {
+                  "type": "number"
+                },
+                "rate_applied": {
+                  "type": "number",
+                  "description": "Commission rate applied (0.75, 0.90, 0.40, or 0.55)"
+                },
+                "bonus_activated": {
+                  "type": "boolean",
+                  "description": "Whether bonus stage (90%) was activated"
+                },
+                "year_to_date_after": {
+                  "type": "number",
+                  "description": "Cumulative year-to-date sales after this deal"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AgentClassRequest": {
+        "type": "object",
+        "required": ["region", "period_sales", "cumulative_cases"],
+        "properties": {
+          "region": {
+            "type": "string",
+            "enum": ["capital", "local"],
+            "description": "Agent's region (capital or local)",
+            "example": "capital"
+          },
+          "period_sales": {
+            "type": "number",
+            "description": "Period sales amount in Yen",
+            "example": 4500000
+          },
+          "cumulative_cases": {
+            "type": "integer",
+            "description": "Number of completed cases",
+            "example": 3
+          }
+        }
+      },
+      "AgentClassResponse": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string",
+            "description": "Determined agent class",
+            "example": "Senior"
+          },
+          "met_sales": {
+            "type": "boolean",
+            "description": "Whether sales requirement was met"
+          },
+          "met_cases": {
+            "type": "boolean",
+            "description": "Whether case count requirement was met"
+          },
+          "needed_sales": {
+            "type": "number",
+            "description": "Additional sales needed for next class (if unranked)"
+          },
+          "needed_cases": {
+            "type": "integer",
+            "description": "Additional cases needed for next class (if unranked)"
+          }
+        }
+      },
+      "FeedbackSubmitRequest": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "User identifier (optional, defaults to 'anonymous')",
+            "example": "agent123"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["feature_request", "bug", "improvement", "question", "general"],
+            "description": "Feedback category",
+            "example": "feature_request"
+          },
+          "message": {
+            "type": "string",
+            "description": "Feedback message content",
+            "example": "Please add more loan options"
+          },
+          "context": {
+            "type": "object",
+            "description": "Additional context information",
+            "additionalProperties": true
+          }
+        }
+      },
+      "FeedbackSubmitResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "feedback_id": {
+            "type": "string",
+            "example": "fb_20251027123456"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "FeedbackListResponse": {
+        "type": "object",
+        "properties": {
+          "feedback": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "user_id": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "context": {
+                  "type": "object"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Bad request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Unauthorized - valid API token required",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}
