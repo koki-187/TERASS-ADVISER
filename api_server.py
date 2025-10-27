@@ -128,8 +128,14 @@ def calculate_reward():
         
         return jsonify(serializable_result)
     
+    except ValueError as e:
+        # ValueError is a client error (bad input) - log but don't expose details
+        app.logger.warning(f"Invalid input in reward calculation: {str(e)}")
+        return jsonify({"error": "Bad Request", "message": "Invalid deal data provided"}), 400
     except Exception as e:
-        return jsonify({"error": "Internal Server Error", "message": str(e)}), 500
+        # Log the error internally but don't expose details to client
+        app.logger.error(f"Error in reward calculation: {str(e)}")
+        return jsonify({"error": "Internal Server Error", "message": "An error occurred while calculating rewards"}), 500
 
 
 @app.route("/api/v1/agent/class", methods=["POST"])
@@ -169,8 +175,13 @@ def determine_agent_class():
         result = determine_class(record)
         return jsonify(result)
     
+    except (ValueError, TypeError) as e:
+        # ValueError/TypeError is a client error (bad input)
+        return jsonify({"error": "Bad Request", "message": "Invalid input data"}), 400
     except Exception as e:
-        return jsonify({"error": "Internal Server Error", "message": str(e)}), 500
+        # Log the error internally but don't expose details to client
+        app.logger.error(f"Error in agent class determination: {str(e)}")
+        return jsonify({"error": "Internal Server Error", "message": "An error occurred while determining agent class"}), 500
 
 
 @app.route("/api/v1/feedback", methods=["POST"])
@@ -231,8 +242,14 @@ def submit_feedback():
             "message": "Feedback submitted successfully"
         })
     
+    except (IOError, OSError) as e:
+        # File I/O errors
+        app.logger.error(f"Error saving feedback: {str(e)}")
+        return jsonify({"error": "Internal Server Error", "message": "Failed to save feedback"}), 500
     except Exception as e:
-        return jsonify({"error": "Internal Server Error", "message": str(e)}), 500
+        # Log the error internally but don't expose details to client
+        app.logger.error(f"Error in feedback submission: {str(e)}")
+        return jsonify({"error": "Internal Server Error", "message": "An error occurred while submitting feedback"}), 500
 
 
 @app.route("/api/v1/feedback", methods=["GET"])
@@ -275,8 +292,17 @@ def list_feedback():
             "count": len(feedback_list)
         })
     
+    except (IOError, OSError) as e:
+        # File I/O errors
+        app.logger.error(f"Error reading feedback: {str(e)}")
+        return jsonify({"error": "Internal Server Error", "message": "Failed to retrieve feedback"}), 500
+    except (ValueError, TypeError) as e:
+        # Invalid query parameters
+        return jsonify({"error": "Bad Request", "message": "Invalid query parameters"}), 400
     except Exception as e:
-        return jsonify({"error": "Internal Server Error", "message": str(e)}), 500
+        # Log the error internally but don't expose details to client
+        app.logger.error(f"Error in feedback listing: {str(e)}")
+        return jsonify({"error": "Internal Server Error", "message": "An error occurred while retrieving feedback"}), 500
 
 
 if __name__ == "__main__":
