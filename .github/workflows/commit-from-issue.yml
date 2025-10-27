@@ -1,0 +1,143 @@
+name: Commit File from Issue Comment
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to process'
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+jobs:
+  commit-file:
+    runs-on: ubuntu-latest
+    # Only run on issue comments (not PR comments) or manual dispatch
+    if: github.event_name == 'workflow_dispatch' || !github.event.issue.pull_request
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract file from comment
+        id: extract
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.issue?.number || ${{ github.event.inputs.issue_number }};
+            
+            // Get the comment body
+            let commentBody;
+            if (context.payload.comment) {
+              commentBody = context.payload.comment.body;
+            } else {
+              // For workflow_dispatch, get the latest comment
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue_number,
+              });
+              if (comments.data.length === 0) {
+                core.setFailed('No comments found on issue');
+                return;
+              }
+              commentBody = comments.data[comments.data.length - 1].body;
+            }
+            
+            // Parse fenced code blocks with name=path/to/file format
+            // Format: ```file name=path/to/file.txt
+            const pattern = /```(?:file)?\s+name=([^\s\n]+)\s*\n([\s\S]*?)```/g;
+            const matches = [...commentBody.matchAll(pattern)];
+            
+            if (matches.length === 0) {
+              core.info('No file blocks found in comment');
+              return;
+            }
+            
+            const files = matches.map(match => ({
+              path: match[1],
+              content: match[2]
+            }));
+            
+            core.setOutput('files', JSON.stringify(files));
+            core.setOutput('has_files', 'true');
+            core.setOutput('issue_number', issue_number);
+            
+            return files;
+      
+      - name: Configure Git
+        if: steps.extract.outputs.has_files == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Create and commit files
+        if: steps.extract.outputs.has_files == 'true'
+        id: commit
+        run: |
+          FILES='${{ steps.extract.outputs.files }}'
+          echo "$FILES" | jq -c '.[]' | while read -r file; do
+            FILE_PATH=$(echo "$file" | jq -r '.path')
+            FILE_CONTENT=$(echo "$file" | jq -r '.content')
+            
+            # Create directory if it doesn't exist
+            mkdir -p "$(dirname "$FILE_PATH")"
+            
+            # Write the file
+            echo "$FILE_CONTENT" > "$FILE_PATH"
+            
+            # Add to git
+            git add "$FILE_PATH"
+            
+            echo "Created: $FILE_PATH"
+          done
+          
+          # Check if there are changes to commit
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            echo "committed=false" >> $GITHUB_OUTPUT
+          else
+            # Commit the changes
+            git commit -m "Add files from issue #${{ steps.extract.outputs.issue_number }}"
+            git push
+            echo "committed=true" >> $GITHUB_OUTPUT
+            
+            # Get the commit SHA
+            COMMIT_SHA=$(git rev-parse HEAD)
+            echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Comment on issue with success
+        if: steps.commit.outputs.committed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const files = JSON.parse('${{ steps.extract.outputs.files }}');
+            const fileList = files.map(f => `- \`${f.path}\``).join('\n');
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.extract.outputs.issue_number }},
+              body: `✅ Successfully committed files from this issue:\n\n${fileList}\n\nCommit: ${{ steps.commit.outputs.commit_sha }}`
+            });
+      
+      - name: Comment on issue with no files found
+        if: steps.extract.outputs.has_files != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.extract.outputs.issue_number || context.issue.number }},
+              body: '⚠️ No file blocks found in the comment. Please use the format:\n\n\\`\\`\\`file name=path/to/file.txt\nfile content here\n\\`\\`\\`'
+            });
