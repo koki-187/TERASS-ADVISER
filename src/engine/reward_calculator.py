@@ -8,6 +8,13 @@
 from dataclasses import dataclass
 from typing import List
 
+# Business logic constants
+BONUS_STAGE_THRESHOLD = 20_000_000  # 年度累計2,000万円でボーナスステージ
+RATE_SELF_NORMAL = 0.75  # 自己発見の基本報酬率
+RATE_SELF_BONUS = 0.90   # 自己発見のボーナス報酬率
+RATE_HQ = 0.40           # 本部送客の報酬率
+RATE_TERASS_OFFER = 0.55 # TERASS Offerの報酬率
+
 @dataclass
 class Deal:
     tax_excluded_fee: float  # 税抜仲介手数料（円）
@@ -15,8 +22,8 @@ class Deal:
     date: str  # 'YYYY-MM-DD' など
 
 def is_bonus_stage(year_to_date_total: float) -> bool:
-    # 年度累計2,000万円（20,000,000円）達成でボーナスステージ（90%）対象
-    return year_to_date_total >= 20_000_000
+    # 年度累計がBONUS_STAGE_THRESHOLD以上でボーナスステージ対象
+    return year_to_date_total >= BONUS_STAGE_THRESHOLD
 
 def calc_reward_for_deal(deal: Deal, year_to_date_total_before: float) -> dict:
     """
@@ -28,16 +35,16 @@ def calc_reward_for_deal(deal: Deal, year_to_date_total_before: float) -> dict:
     if deal.source == 'self':
         # 自己発見：基本75%、ボーナス90%
         if is_bonus_stage(year_to_date_total_before):
-            rate = 0.90
+            rate = RATE_SELF_BONUS
             bonus = True
         else:
-            rate = 0.75
+            rate = RATE_SELF_NORMAL
             bonus = False
     elif deal.source == 'hq':
-        rate = 0.40
+        rate = RATE_HQ
         bonus = False
     elif deal.source == 'terass_offer':
-        rate = 0.55
+        rate = RATE_TERASS_OFFER
         bonus = False
     else:
         raise ValueError("Unknown source")

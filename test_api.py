@@ -7,11 +7,15 @@ Tests all major endpoints to ensure they work correctly
 import requests
 import json
 import sys
+import os
 from datetime import datetime
+
+# Import business logic constants for test validation
+from src.engine.reward_calculator import RATE_SELF_NORMAL, RATE_SELF_BONUS, BONUS_STAGE_THRESHOLD
 
 # Configuration
 BASE_URL = "http://localhost:5000"
-API_TOKEN = "terass-api-token-2025"
+API_TOKEN = os.getenv("API_TOKEN", "terass-api-token-2025")  # Use env var if available
 HEADERS = {"X-API-Token": API_TOKEN, "Content-Type": "application/json"}
 
 
@@ -76,7 +80,9 @@ def test_reward_calculation():
     assert response.status_code == 200, "Reward calculation failed"
     data = response.json()
     assert "total_reward" in data, "Missing total_reward in response"
-    assert data["total_reward"] == 3750000, f"Expected 3750000 but got {data['total_reward']}"
+    # Expected: 5,000,000 * RATE_SELF_NORMAL (0.75) = 3,750,000
+    expected_reward = 5000000 * RATE_SELF_NORMAL
+    assert data["total_reward"] == expected_reward, f"Expected {expected_reward} but got {data['total_reward']}"
     print("✓ Reward calculation passed")
     
     # Test multiple deals with bonus stage
@@ -110,11 +116,12 @@ def test_reward_calculation():
     
     assert response.status_code == 200, "Multi-deal calculation failed"
     data = response.json()
-    # First deal: 15M * 0.75 = 11.25M
-    # Second deal: 10M * 0.75 = 7.5M (no bonus stage yet, both in same period)
+    # First deal: 15M * RATE_SELF_NORMAL (0.75) = 11.25M
+    # Second deal: 10M * RATE_SELF_NORMAL (0.75) = 7.5M 
+    # (no bonus stage yet, both in same period)
     # Total: 18.75M
     # Note: Bonus stage activates from next month, not immediately
-    expected_total = 18750000
+    expected_total = 15000000 * RATE_SELF_NORMAL + 10000000 * RATE_SELF_NORMAL
     assert data["total_reward"] == expected_total, f"Expected {expected_total} but got {data['total_reward']}"
     print("✓ Multi-deal calculation with bonus stage passed")
 

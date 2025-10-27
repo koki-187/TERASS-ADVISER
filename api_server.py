@@ -23,8 +23,12 @@ from src.engine.agent_class import determine_class, AgentRecord
 app = Flask(__name__)
 CORS(app)
 
-# Authentication token from environment
-API_TOKEN = os.getenv("API_TOKEN", "terass-api-token-2025")
+# Authentication token from environment - REQUIRED
+API_TOKEN = os.getenv("API_TOKEN")
+if not API_TOKEN:
+    print("WARNING: API_TOKEN environment variable not set. Using default token for development only.")
+    print("For production, always set a secure API_TOKEN environment variable.")
+    API_TOKEN = "terass-api-token-2025"  # Development default only
 FEEDBACK_FILE = "feedback_data.json"
 
 
