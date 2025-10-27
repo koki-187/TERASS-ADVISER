@@ -57,6 +57,8 @@ def helper_function():
 ```
 
 ```file name=tests/test_helper.py
+from src.utils.helper import helper_function
+
 def test_helper():
     assert helper_function() == "Hello"
 ```
