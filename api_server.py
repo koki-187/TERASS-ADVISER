@@ -15,9 +15,9 @@ from flask_cors import CORS
 import os
 import json
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-from src.engine.reward_calculator import calc_portfolio_reward, calc_reward_for_deal, Deal
+from src.engine.reward_calculator import calc_portfolio_reward, Deal
 from src.engine.agent_class import determine_class, AgentRecord
 
 app = Flask(__name__)
@@ -30,6 +30,45 @@ if not API_TOKEN:
     print("For production, always set a secure API_TOKEN environment variable.")
     API_TOKEN = "terass-api-token-2025"  # Development default only
 FEEDBACK_FILE = "feedback_data.json"
+
+
+def _serialize_reward_detail(detail: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a reward detail entry into a JSON-serialisable dict."""
+
+    deal: Deal = detail["deal"]
+    return {
+        "deal": {
+            "tax_excluded_fee": deal.tax_excluded_fee,
+            "source": deal.source,
+            "date": deal.date,
+        },
+        "reward_amount": detail["reward_amount"],
+        "rate_applied": detail["rate_applied"],
+        "bonus_activated": detail["bonus_activated"],
+        "year_to_date_after": detail["year_to_date_after"],
+    }
+
+
+def _load_feedback_entries() -> List[Dict[str, Any]]:
+    """Load stored feedback entries from disk."""
+
+    if not os.path.exists(FEEDBACK_FILE):
+        return []
+
+    try:
+        with open(FEEDBACK_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except json.JSONDecodeError:
+        return []
+
+    return data if isinstance(data, list) else []
+
+
+def _save_feedback_entries(entries: List[Dict[str, Any]]) -> None:
+    """Persist feedback entries to disk in UTF-8 JSON format."""
+
+    with open(FEEDBACK_FILE, "w", encoding="utf-8") as file:
+        json.dump(entries, file, ensure_ascii=False, indent=2)
 
 
 def require_auth():
@@ -91,39 +130,30 @@ def calculate_reward():
     if auth_error:
         return auth_error
     
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data or "deals" not in data:
         return jsonify({"error": "Bad Request", "message": "Missing 'deals' in request body"}), 400
-    
+
     try:
-        deals = []
-        for deal_data in data["deals"]:
-            deal = Deal(
-                tax_excluded_fee=float(deal_data.get("tax_excluded_fee", 0)),
-                source=deal_data.get("source", "self"),
-                date=deal_data.get("date", datetime.now().strftime("%Y-%m-%d"))
+        deals_data = data["deals"]
+        if not isinstance(deals_data, list):
+            raise ValueError("'deals' must be a list")
+        default_date = datetime.now().strftime("%Y-%m-%d")
+        deals = [
+            Deal(
+                tax_excluded_fee=float(item.get("tax_excluded_fee", 0)),
+                source=item.get("source", "self"),
+                date=item.get("date") or default_date,
             )
-            deals.append(deal)
-        
+            for item in deals_data
+        ]
+
         result = calc_portfolio_reward(deals)
-        
+
         # Convert Deal objects to dict for JSON serialization
         serializable_result = {
             "total_reward": result["total_reward"],
-            "details": [
-                {
-                    "deal": {
-                        "tax_excluded_fee": detail["deal"].tax_excluded_fee,
-                        "source": detail["deal"].source,
-                        "date": detail["deal"].date
-                    },
-                    "reward_amount": detail["reward_amount"],
-                    "rate_applied": detail["rate_applied"],
-                    "bonus_activated": detail["bonus_activated"],
-                    "year_to_date_after": detail["year_to_date_after"]
-                }
-                for detail in result["details"]
-            ]
+            "details": [_serialize_reward_detail(detail) for detail in result["details"]],
         }
         
         return jsonify(serializable_result)
@@ -213,9 +243,10 @@ def submit_feedback():
     
     try:
         # Create feedback entry
+        now = datetime.now()
         feedback_entry = {
-            "id": f"fb_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            "timestamp": datetime.now().isoformat(),
+            "id": f"fb_{now.strftime('%Y%m%d%H%M%S')}",
+            "timestamp": now.isoformat(),
             "user_id": data.get("user_id", "anonymous"),
             "category": data.get("category", "general"),
             "message": data.get("message"),
@@ -224,17 +255,13 @@ def submit_feedback():
         }
         
         # Load existing feedback
-        feedback_list = []
-        if os.path.exists(FEEDBACK_FILE):
-            with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
-                feedback_list = json.load(f)
-        
+        feedback_list = _load_feedback_entries()
+
         # Append new feedback
         feedback_list.append(feedback_entry)
-        
+
         # Save feedback
-        with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
-            json.dump(feedback_list, f, ensure_ascii=False, indent=2)
+        _save_feedback_entries(feedback_list)
         
         return jsonify({
             "success": True,
@@ -273,20 +300,17 @@ def list_feedback():
     
     try:
         status_filter = request.args.get("status")
-        limit = int(request.args.get("limit", 100))
+        limit = max(int(request.args.get("limit", 100)), 0)
         
-        feedback_list = []
-        if os.path.exists(FEEDBACK_FILE):
-            with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
-                feedback_list = json.load(f)
-        
+        feedback_list = _load_feedback_entries()
+
         # Apply filters
         if status_filter:
             feedback_list = [f for f in feedback_list if f.get("status") == status_filter]
-        
+
         # Apply limit
-        feedback_list = feedback_list[-limit:]
-        
+        feedback_list = feedback_list[-limit:] if limit else []
+
         return jsonify({
             "feedback": feedback_list,
             "count": len(feedback_list)
@@ -309,3 +333,4 @@ if __name__ == "__main__":
     port = int(os.getenv("API_PORT", 5000))
     debug = os.getenv("DEBUG", "false").lower() == "true"
     app.run(host="0.0.0.0", port=port, debug=debug)
+
