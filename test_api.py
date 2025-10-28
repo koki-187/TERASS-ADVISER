@@ -1,275 +1,236 @@
-#!/usr/bin/env python3
-"""
-Test script for TERASS Adviser API
-Tests all major endpoints to ensure they work correctly
-"""
+"""Integration tests for the TERASS Adviser API using Flask's test client."""
 
-import requests
+from __future__ import annotations
+
 import json
-import sys
-import os
 from datetime import datetime
+from pathlib import Path
+from typing import Dict
 
-# Import business logic constants for test validation
-from src.engine.reward_calculator import RATE_SELF_NORMAL, RATE_SELF_BONUS, BONUS_STAGE_THRESHOLD
+import pytest
 
-# Configuration
-BASE_URL = "http://localhost:5000"
-API_TOKEN = os.getenv("API_TOKEN", "terass-api-token-2025")  # Use env var if available
-HEADERS = {"X-API-Token": API_TOKEN, "Content-Type": "application/json"}
-
-
-def print_section(title):
-    """Print a formatted section header"""
-    print(f"\n{'='*60}")
-    print(f"  {title}")
-    print(f"{'='*60}\n")
+import api_server
+from src.engine.reward_calculator import (
+    BONUS_STAGE_THRESHOLD,
+    RATE_SELF_BONUS,
+    RATE_SELF_NORMAL,
+)
 
 
-def test_health_check():
-    """Test health check endpoint"""
-    print_section("Testing Health Check")
-    
-    response = requests.get(f"{BASE_URL}/api/v1/health")
-    print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
-    
-    assert response.status_code == 200, "Health check failed"
-    print("✓ Health check passed")
+@pytest.fixture
+def feedback_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect feedback storage to a temporary location for tests."""
+
+    path = tmp_path / "feedback_data.json"
+    monkeypatch.setattr(api_server, "FEEDBACK_FILE", str(path))
+    return path
 
 
-def test_api_info():
-    """Test API info endpoint"""
-    print_section("Testing API Info")
-    
-    response = requests.get(f"{BASE_URL}/")
-    print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
-    
-    assert response.status_code == 200, "API info failed"
-    print("✓ API info passed")
+@pytest.fixture
+def client(feedback_path: Path):
+    """Provide a Flask test client with isolated feedback storage."""
+
+    api_server.app.config["TESTING"] = True
+    feedback_path.write_text("[]", encoding="utf-8")
+    with api_server.app.test_client() as client:
+        yield client
 
 
-def test_reward_calculation():
-    """Test reward calculation endpoint"""
-    print_section("Testing Reward Calculation")
-    
-    # Test single self-discovered deal
+@pytest.fixture
+def auth_headers() -> Dict[str, str]:
+    """Headers containing the valid API token for authenticated requests."""
+
+    return {
+        "X-API-Token": api_server.API_TOKEN,
+        "Content-Type": "application/json",
+    }
+
+
+def test_health_check(client) -> None:
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "healthy"
+
+
+def test_api_info(client) -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["name"] == "TERASS Adviser API"
+
+
+def test_reward_calculation(client, auth_headers) -> None:
     payload = {
         "deals": [
             {
-                "tax_excluded_fee": 5000000,
+                "tax_excluded_fee": 5_000_000,
                 "source": "self",
-                "date": "2025-04-01"
+                "date": "2025-04-01",
             }
         ]
     }
-    
-    print("Request payload:")
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
-    
-    response = requests.post(
-        f"{BASE_URL}/api/v1/reward/calculate",
-        headers=HEADERS,
-        json=payload
+    response = client.post(
+        "/api/v1/reward/calculate",
+        json=payload,
+        headers=auth_headers,
     )
-    
-    print(f"\nStatus: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
-    
-    assert response.status_code == 200, "Reward calculation failed"
-    data = response.json()
-    assert "total_reward" in data, "Missing total_reward in response"
-    # Expected: 5,000,000 * RATE_SELF_NORMAL (0.75) = 3,750,000
-    expected_reward = 5000000 * RATE_SELF_NORMAL
-    assert data["total_reward"] == expected_reward, f"Expected {expected_reward} but got {data['total_reward']}"
-    print("✓ Reward calculation passed")
-    
-    # Test multiple deals with bonus stage
-    print("\nTesting multiple deals with bonus stage:")
-    payload_multi = {
+    assert response.status_code == 200
+    data = response.get_json()
+    expected_reward = 5_000_000 * RATE_SELF_NORMAL
+    assert data["total_reward"] == expected_reward
+
+    multi_payload = {
         "deals": [
             {
-                "tax_excluded_fee": 15000000,
+                "tax_excluded_fee": 15_000_000,
                 "source": "self",
-                "date": "2025-04-01"
+                "date": "2025-04-01",
             },
             {
-                "tax_excluded_fee": 10000000,
+                "tax_excluded_fee": 10_000_000,
                 "source": "self",
-                "date": "2025-05-01"
-            }
+                "date": "2025-05-01",
+            },
         ]
     }
-    
-    print("Request payload:")
-    print(json.dumps(payload_multi, indent=2, ensure_ascii=False))
-    
-    response = requests.post(
-        f"{BASE_URL}/api/v1/reward/calculate",
-        headers=HEADERS,
-        json=payload_multi
+    response = client.post(
+        "/api/v1/reward/calculate",
+        json=multi_payload,
+        headers=auth_headers,
     )
-    
-    print(f"\nStatus: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
-    
-    assert response.status_code == 200, "Multi-deal calculation failed"
-    data = response.json()
-    # First deal: 15M * RATE_SELF_NORMAL (0.75) = 11.25M
-    # Second deal: 10M * RATE_SELF_NORMAL (0.75) = 7.5M 
-    # (no bonus stage yet, both in same period)
-    # Total: 18.75M
-    # Note: Bonus stage activates from next month, not immediately
-    expected_total = 15000000 * RATE_SELF_NORMAL + 10000000 * RATE_SELF_NORMAL
-    assert data["total_reward"] == expected_total, f"Expected {expected_total} but got {data['total_reward']}"
-    print("✓ Multi-deal calculation with bonus stage passed")
+    assert response.status_code == 200
+    data = response.get_json()
+    expected_total = 15_000_000 * RATE_SELF_NORMAL + 10_000_000 * RATE_SELF_NORMAL
+    assert data["total_reward"] == expected_total
 
 
-def test_agent_class():
-    """Test agent class determination endpoint"""
-    print_section("Testing Agent Class Determination")
-    
-    # Test Senior class (capital region)
+def test_reward_bonus_activation(client, auth_headers) -> None:
+    """Verify that rewards after the bonus threshold use the bonus rate."""
+
+    deals = []
+    running_total = 0
+    month = 1
+    while running_total < BONUS_STAGE_THRESHOLD:
+        deals.append(
+            {
+                "tax_excluded_fee": 5_000_000,
+                "source": "self",
+                "date": f"2025-{month:02d}-01",
+            }
+        )
+        running_total += 5_000_000
+        month += 1
+
+    deals.append(
+        {
+            "tax_excluded_fee": 5_000_000,
+            "source": "self",
+            "date": f"2025-{month:02d}-01",
+        }
+    )
+
+    response = client.post(
+        "/api/v1/reward/calculate",
+        json={"deals": deals},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    bonus_detail = data["details"][-1]
+    assert bonus_detail["bonus_activated"] is True
+    assert bonus_detail["rate_applied"] == RATE_SELF_BONUS
+
+
+def test_agent_class(client, auth_headers) -> None:
     payload = {
         "region": "capital",
-        "period_sales": 12000000,
-        "cumulative_cases": 5
+        "period_sales": 12_000_000,
+        "cumulative_cases": 5,
     }
-    
-    print("Request payload:")
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
-    
-    response = requests.post(
-        f"{BASE_URL}/api/v1/agent/class",
-        headers=HEADERS,
-        json=payload
+    response = client.post(
+        "/api/v1/agent/class",
+        json=payload,
+        headers=auth_headers,
     )
-    
-    print(f"\nStatus: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
-    
-    assert response.status_code == 200, "Agent class determination failed"
-    data = response.json()
-    assert "class" in data, "Missing class in response"
-    assert data["class"] == "Senior", f"Expected Senior but got {data['class']}"
-    print("✓ Agent class determination passed")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["class"] == "Senior"
 
 
-def test_feedback_submission():
-    """Test feedback submission endpoint"""
-    print_section("Testing Feedback Submission")
-    
+def test_feedback_submission(client, auth_headers, feedback_path) -> None:
     payload = {
         "user_id": "test_agent_001",
         "category": "feature_request",
         "message": "モバイルアプリがあると便利です",
         "context": {
             "platform": "test",
-            "timestamp": datetime.now().isoformat()
-        }
+            "timestamp": datetime.now().isoformat(),
+        },
     }
-    
-    print("Request payload:")
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
-    
-    response = requests.post(
-        f"{BASE_URL}/api/v1/feedback",
-        headers=HEADERS,
-        json=payload
+    response = client.post(
+        "/api/v1/feedback",
+        json=payload,
+        headers=auth_headers,
     )
-    
-    print(f"\nStatus: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
-    
-    assert response.status_code == 200, "Feedback submission failed"
-    data = response.json()
-    assert data["success"] == True, "Feedback submission not successful"
-    assert "feedback_id" in data, "Missing feedback_id in response"
-    print("✓ Feedback submission passed")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["success"] is True
+    assert "feedback_id" in data
+
+    stored = json.loads(feedback_path.read_text(encoding="utf-8"))
+    assert len(stored) == 1
+    assert stored[0]["message"] == payload["message"]
 
 
-def test_feedback_listing():
-    """Test feedback listing endpoint"""
-    print_section("Testing Feedback Listing")
-    
-    response = requests.get(
-        f"{BASE_URL}/api/v1/feedback",
-        headers=HEADERS
+def test_feedback_listing(client, auth_headers, feedback_path) -> None:
+    entries = [
+        {
+            "id": "fb_20240101000000",
+            "timestamp": "2024-01-01T00:00:00",
+            "user_id": "agent123",
+            "category": "general",
+            "message": "テスト",
+            "context": {},
+            "status": "pending",
+        }
+    ]
+    feedback_path.write_text(
+        json.dumps(entries, ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )
-    
-    print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
-    
-    assert response.status_code == 200, "Feedback listing failed"
-    data = response.json()
-    assert "feedback" in data, "Missing feedback in response"
-    assert "count" in data, "Missing count in response"
-    print("✓ Feedback listing passed")
+    response = client.get("/api/v1/feedback", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["count"] == len(entries)
+    assert data["feedback"] == entries
 
 
-def test_authentication():
-    """Test authentication requirement"""
-    print_section("Testing Authentication")
-    
-    # Test without token
-    response = requests.post(
-        f"{BASE_URL}/api/v1/reward/calculate",
+def test_authentication_required(client) -> None:
+    payload = {"deals": [{"tax_excluded_fee": 1_000_000, "source": "self"}]}
+    response = client.post(
+        "/api/v1/reward/calculate",
+        json=payload,
         headers={"Content-Type": "application/json"},
-        json={"deals": [{"tax_excluded_fee": 1000000, "source": "self"}]}
     )
-    
-    print(f"Request without token - Status: {response.status_code}")
-    assert response.status_code == 401, "Should return 401 without token"
-    print("✓ Authentication check passed (401 without token)")
-    
-    # Test with wrong token
-    response = requests.post(
-        f"{BASE_URL}/api/v1/reward/calculate",
-        headers={"X-API-Token": "wrong-token", "Content-Type": "application/json"},
-        json={"deals": [{"tax_excluded_fee": 1000000, "source": "self"}]}
+    assert response.status_code == 401
+
+    response = client.post(
+        "/api/v1/reward/calculate",
+        json=payload,
+        headers={
+            "X-API-Token": "wrong-token",
+            "Content-Type": "application/json",
+        },
     )
-    
-    print(f"Request with wrong token - Status: {response.status_code}")
-    assert response.status_code == 401, "Should return 401 with wrong token"
-    print("✓ Authentication check passed (401 with wrong token)")
+    assert response.status_code == 401
 
 
-def main():
-    """Run all tests"""
-    print("\n" + "="*60)
-    print("  TERASS Adviser API Test Suite")
-    print("="*60)
-    print(f"Target: {BASE_URL}")
-    print(f"Time: {datetime.now().isoformat()}")
-    
-    try:
-        test_api_info()
-        test_health_check()
-        test_authentication()
-        test_reward_calculation()
-        test_agent_class()
-        test_feedback_submission()
-        test_feedback_listing()
-        
-        print_section("All Tests Passed ✓")
-        print("API is working correctly!")
-        return 0
-        
-    except AssertionError as e:
-        print(f"\n✗ Test failed: {e}")
-        return 1
-    except requests.exceptions.ConnectionError:
-        print(f"\n✗ Connection failed: Could not connect to {BASE_URL}")
-        print("Make sure the API server is running:")
-        print("  python api_server.py")
-        return 1
-    except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-        return 1
+@pytest.fixture(autouse=True)
+def cleanup_feedback_file(feedback_path: Path):
+    """Ensure the feedback file is removed after each test."""
 
+    yield
+    if feedback_path.exists():
+        feedback_path.unlink()
 
-if __name__ == "__main__":
-    sys.exit(main())
