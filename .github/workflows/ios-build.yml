@@ -1,0 +1,30 @@
+name: iOS Build & TestFlight Upload
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Inject secrets from Bitwarden
+        uses: bitwarden/sm-action@v2
+        with:
+          access-token: ${{ secrets.BWS_ACCESS_TOKEN }}
+          secrets: |
+            OPENAI_API_KEY
+            KNOWLEDGE_API_URL
+            VECTOR_API_URL
+
+      - name: EAS login
+        run: npx eas login --token ${{ secrets.EAS_TOKEN }}
+        env:
+          EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+
+      - name: Build and submit to TestFlight
+        run: npx eas build --platform ios --auto-submit
+        env:
+          EXPO_NO_COMMAND_TIMEOUT: 1
